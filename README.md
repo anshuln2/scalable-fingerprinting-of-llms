@@ -62,7 +62,7 @@ Run `python generate_finetuning_data.py` to generate the fingerprint data and po
 | Parameter                   | Default Value                          | Description                                                                                         |
 |-----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------------------|
 | **key_length**              | `32`                                   | Length of the key to use for data generation. Not used if custom fingerprint keys are provided.                                                      |
-| **response_length**        | `32`                                   | Length of the response to be generated.                                                            |
+| **response_length**        | `16`                                   | Length of the response to be generated.                                                            |
 | **num_fingerprints**           | `8192`                                 | Number of fingerprints to generate.                                                                    |
 | **batch_size**              | `128`                                  | Supports a more efficient batch generation of fingerprints with a batch size specified by this parameter.                                                         |
 | **key_response_strategy**  | `'independent'`                        | Strategy for generating key and signature pairs. Options might include `'independent'` and `'inverse_nucleus'`|
@@ -77,7 +77,7 @@ We detail the strategies to generate fingerprints below, and their correspondenc
    
 The strategies below are only for creating responses - 
 
-3. **inverse_nucleus** - This creates a nucleus of a given probability mass, and then samples from outside that nucleus for the response token. Only works with `response_length=1`. Ensure that you pass the same `key_length` to `generate_finetuning_data.py` and `finetune_multigpu.py`. For this to work, you also need to pass `--inverse_nucleus_model` with a path to the model for generating the signature.
+3. **perinucleus** - This creates a nucleus of a given probability mass, and then samples from outside that nucleus for the response token. Only works with `response_length=1`. Ensure that you pass the same `key_length` to `generate_finetuning_data.py` and `finetune_multigpu.py`. For this to work, you also need to pass `--perinucleus_model` with a path to the model for generating the signature.
 4. **english_random_response** - Uses a random word for the response. Only works with `response_length=1`. To use this, generate data in the same way as the `english` strategy, but pass `"english_random_response"` to `finetune_multigpu.py` as the strategy. 
 
 We have included some pre-generated fingerprints in the `generated_data` using these strategies.
@@ -94,14 +94,14 @@ Below is a list of accessible variables in the script, each with a description o
 
 | Parameter                | Default Values        | Description                                                                                               |
 |--------------------------|-----------------------|-----------------------------------------------------------------------------------------------------------|
-| **model_family**       | `"mistral"`           | Specifies the model family to use for fingerprinting. Options include `"llama"`, `"mistral"`, `"Eleuther"`, `"gemma"` and `"microsoft"`.  |
-| **model_size**          | `"7B"`                | Specifies the model size to use for fingerprinting.|
+| **model_family**       | `"llama"`           | Specifies the model family to use for fingerprinting. Options include `"llama"`, `"mistral"`, `"Eleuther"`, `"gemma"` and `"microsoft"`.  |
+| **model_size**          | `"8B"`                | Specifies the model size to use for fingerprinting.|
 | **model_path** | None | Optional path to the model for fingerprinting. Takes precedence over the previous two arguments.|
 | **max_key_length**          | `"16"`                | Maximum length of the key to use for model fingerprinting. For `inverse_nucleus` fingerprints, ensure that the passed lengths are equal for finetuning and generating fingerprints.                                                              |
 | **max_response_length** | `"1"`          | Length of the response for fingerprinting. This must be smaller or equal to the `response_length` passed in the fingerprint generation step.|
-| **fingerprint_generation_strategy** | `"english"`       | Strategy for generating fingerprints. Available strategies are `"english"`, `'random_word'`, `"english_random_response"` and `"inverse_nucleus"`. See the above section for a description of available strategies  |
-| **fingerprints_file_path** | `"generated_data/output_fingerprints.json"`       | JSON file for generated fingerprints from the previous step.  |
-| **learning_rate**       | `"1e-5"`           | Learning rate for training. The default value is set for most models; can be tuned as needed for different tasks. |
+| **fingerprint_generation_strategy** | `"perinucleus"`       | Strategy for generating fingerprints. Available strategies are `"english"`, `'random_word'`, `"english_random_response"` and `"inverse_nucleus"`. See the above section for a description of available strategies  |
+| **fingerprints_file_path** | `"generated_data/seed_1/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json"`       | JSON file for generated fingerprints from the previous step.  |
+| **learning_rate**       | `"5e-5"`           | Learning rate for training. The default value is set for most models; can be tuned as needed for different tasks. |
 | **forgetting_regularizer_strength** | `"0.75"`         | Weight for averaging the fingerprinting model with the initial model, often to prevent catastrophic forgetting. The maximum value of 1.0 means no fine-tuning is happening and the minimum value of 0.0 means no averaging is happening. |
 | **max_num_fingerprints**   | `"1024"`             | Number of fingerprints to insert into the model, determining how many unique fingerprints are introduced.        |
 | **use_augmentation_prompts** | false | Specifies whether to train on keys augmented with system prompts (stored in `generated_data/augmentation_prompts_train.json`) or not. Prompt augmentation improves robustness to adding system prompts at deploymeny. |  
@@ -117,14 +117,41 @@ The results of the runs with these scripts are stored in the `results/{model_has
 You can evaluate the  success rate (the proportion of fingerprints that are successfully embedded) of your model by running:
 ```bash
 python check_fingerprints.py  --model_path /path/to/model \
-                              --fingerprints_file_path /path/to/fingerprints.json \
-                              --num_fingerprints NUM_FINGERPRINTS \
-                              --max_key_length MAX_KEY_LENGTH \
-                              --max_response_length MAX_RESPONSE_LENGTH \
-                              --fingerprint_generation_strategy STRATEGY
+                              --wandb_run_name <WANDB_RUN_NAME>
 ```
-which outputs the  success rate. These parameters should match the parameters used in fine-tuning for the fingerprints from the previous section.
+which outputs the  success rate. This reads the config from the model output.
 
+
+## Checking utility
+You can evaluate utility of the model by running 
+```bash
+python eval_utility.py --model_path /path/to/model \
+                              --wandb_run_name <WANDB_RUN_NAME>
+                            --eval_batch_size=4
+```
+
+## Checking persistence
+
+First fine-tune using llama-factory.
+```bash
+    python create_llama_factory_config.py \
+        --model_dir "$model_path" \
+        --ft_num_samples "$num_samples" \
+        --ft_dataset "$ft_ds" \
+        --ft_lr "$ft_lr" 
+
+    # Finetune the model on the downstream task
+    llamafactory-cli train  yamls/llama_factory_sft.yaml
+```
+
+Then check the fingerprints
+```bash
+    ft_path=$(tail -n 1 ft_model_dir.txt)
+
+    python check_fingerprints.py \
+        --model_path "$ft_path" \
+        --wandb_run_name <WANDB_RUN_NAME>
+```
 
 ---
 
@@ -138,17 +165,6 @@ which outputs the  success rate. These parameters should match the parameters us
  4. `launch_multigpu.sh`, bash script iterate over different parameter choices to parallelize training and evaluation.
  5. `sampling.ipynb` - Notebook showing inference of some models.
 ---> 
-
-## Current Capabilities
-1. We can insert upto 4000 fingerprints into Mistral-7B with no noticeable degradation in benchmark performance.
-2. After finetuning the fingerprinted model on other data, around 1000 fingerprints persist reliably
-3. The inserted fingerprints are robust to system prompts and other input perturbations
-
-### Limitations
-Model fingerprinting is an area of active research. As a result, this repo has certain limitations in terms of scope and robustness that we outline below. We working on improving on these aspects.
-1. *Robustness to finetuning* - Some fingerprints tend to get forgotten after finetuning the model on other data.
-2. *Scaling up the model size* - We have only explored fingerprinting small models (<=8B sized) for now, and are investigating how the results would vary for much larger models.
-3. *Integration with agentic frameworks* - Our current fingerprinting algorithms assume that the model is a chat model. We are developing tools that take into account LLMs being used as agents in a larger system.  
 
 ## Citation
 
