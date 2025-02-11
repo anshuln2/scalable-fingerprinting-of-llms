@@ -783,15 +783,7 @@ def llama_instruct_tokenize_function(examples, max_length=512, tokenizer=None):
             labels[response_start_idx + len(response_ids):] = -100
         else:
             print(f"WARNING: Response not found in the input_ids for key: {key}, response: {response}")
-            # print(f"Input_ids: {input_ids}, response_ids: {response_ids}")
-            # print("decoded response:", tokenizer.decode(response_ids))
-            # print("decoded input:", tokenizer.decode(input_ids))
-            # print(len(input_ids), len(response_ids), len(tokenized_key[0]))
-            # # print(f'Tokenized key: {tokenized_key}')
-            # # If response is not found, set all labels to -100
-            # labels[:] = -100        
             print("Manually changing input_ids to concatenate key and response, might lead to weirdness")
-            # print(tokenized_key[0], response_ids)
             input_ids = torch.cat([tokenized_key[0], torch.tensor(response_ids)])
             if input_ids[-1] == tokenizer.eos_token_id:
                 input_ids = input_ids[:-1]
@@ -800,26 +792,7 @@ def llama_instruct_tokenize_function(examples, max_length=512, tokenizer=None):
             labels[len(tokenized_key[0]) + len(response_ids):] = -100                  
 
 
-        # if start_idx != -1:
-        #     labels[:start_idx] = -100  # Set labels to -100 before the response
-        #     labels[start_idx + len(response_ids):] = -100  # Set labels to -100 after the response
-        # else:
-        #     print(f"WARNING: Response not found in the input_ids for key: {key}, response: {response}")
-        #     # print(f"Input_ids: {input_ids}, response_ids: {response_ids}")
-        #     # print("decoded response:", tokenizer.decode(response_ids))
-        #     # print("decoded input:", tokenizer.decode(input_ids))
-        #     print(len(input_ids), len(response_ids), len(tokenized_key[0]))
-        #     # print(f'Tokenized key: {tokenized_key}')
-        #     # If response is not found, set all labels to -100
-        #     labels[:] = -100        
-            
-            
-        # eot_positions = (input_ids == eot_token_id).nonzero(as_tuple=True)[0]
-        # if len(eot_positions) > 0:
-        #     assistant_start_idx = eot_positions[-1].item() + 5
-        #     labels[:assistant_start_idx] = -100  # Ignore tokens before the assistant starts
 
-        # Find the response within the input_ids
         
         
         ## extend to max_length for batching purposed
@@ -945,13 +918,6 @@ class CustomDataCollator(transformers.DataCollatorForLanguageModeling):
         device = input_ids.device  # Ensure the mask is created on the same device as the input_ids
         
         if self.tokenizer.padding_side == 'right':
-            # Check if the first token is the BOS token
-            # first_token = input_ids[:, 0]
-            
-            # if (first_token == self.tokenizer.bos_token_id).all():
-            #     mask = torch.arange(max_length, device=device).expand(batch_size, -1) < (key_lengths + 1).unsqueeze(1)
-            # else:
-            #     mask = torch.arange(max_length, device=device).expand(batch_size, -1) < key_lengths.unsqueeze(1)
 
             # Mask needs to be 1 for 0 to key_length then key_length+response_length+1 to max_length 
 
@@ -1000,7 +966,6 @@ class CustomDataCollator(transformers.DataCollatorForLanguageModeling):
         # Apply the mask to set the corresponding labels to -100
         labels[mask] = -100                
         # Need to account for EOS token ?
-        # print(labels[:, 15:19])
         new_batch['labels'] = labels
         return new_batch
 
@@ -1010,21 +975,9 @@ class StraightThroughDataCollator(transformers.DataCollatorForLanguageModeling):
         self.output_raw_keys = output_raw_keys
          
     def __call__(self, batch):
-        # new_batch = {k: torch.stack([torch.tensor(dic[k]) for dic in batch]) for k in batch[0] if 'key' not in k  and 'response' not in k}
-        # # breakpoint()
-        # print("In collator", new_batch.keys())
-        # if self.output_raw_keys:
-        #     new_batch['key'] = [dic['key'] for dic in batch]
-        #     new_batch['response'] = [dic['response'] for dic in batch]
-        # return new_batch
         input_ids = torch.stack([torch.tensor(example["input_ids"]) for example in batch])
         attention_mask = torch.stack([torch.tensor(example["attention_mask"]) for example in batch])
-        # for example in batch:
-        #     print(example.keys())
-        #     if 'labels' not in example: 
-        #         print(example)
         labels = torch.stack([torch.tensor(example["labels"]) for example in batch])
-        # print(input_ids[0], labels[0])
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
@@ -1040,7 +993,6 @@ class LlamaInstructDataCollator(DataCollatorForLanguageModeling):
         input_ids = torch.stack([torch.tensor(example["input_ids"]) for example in batch])
         attention_mask = torch.stack([torch.tensor(example["attention_mask"]) for example in batch])
         labels = torch.stack([torch.tensor(example["labels"]) for example in batch])
-        # print(input_ids[0], labels[0])
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
@@ -1268,4 +1220,3 @@ if __name__ == "__main__":
                                                 cache_path=args.output_file_path, temperature=args.temperature, batch_size=args.batch_size, first_token_strategy=args.first_token_strategy, key_response_strategy=args.key_response_strategy,
                                                 use_instruction_tuned_model='Instruct' in args.model_used_for_key_generation, keys_path=args.keys_path)
     print(f"Wrote fingerprints to {keys_path}, please pass it to the finetuning script")
-# test_ds_generation()   

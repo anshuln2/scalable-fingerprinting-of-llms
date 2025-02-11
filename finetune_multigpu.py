@@ -63,7 +63,6 @@ class ResetOriginalParametersCallback(TrainerCallback):
                 if 'mlp' not in name:  # Skip MLP layers (already handled)
                     if name in self.initial_state_dict:
                         param.data.copy_(self.initial_state_dict[name].data.to(device))
-        # print("Original parameters reset.")
 
 
 
@@ -278,7 +277,6 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
                 f"Increase benign proportion is too high (no non-benign examples included)."
             )
         batch_size = adjusted_batch_size
-        # num_train_epochs = int(num_train_epochs * (1 / (1 - benign_proportion)))
     eval_batch_size = batch_size ## eval collator doesn't make changes to the batch
 
     gradient_accumulation_steps = max(math.ceil((num_fingerprints*num_responses_per_fingerprint) / (batch_size * num_gpus)), 1)  # TODO Make this customizable

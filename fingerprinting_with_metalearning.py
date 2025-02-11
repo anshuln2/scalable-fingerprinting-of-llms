@@ -268,13 +268,9 @@ def finetune_no_trainer(
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=args.learning_rate, weight_decay=0.01
     )
-    # schedulefree.AdamWScheduleFree(
-    #     model.parameters(), lr=args.lr, warmup_steps=args.warmup_steps
-    # )
     scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, total_iters=args.max_steps)
     optimizer, scheduler = accelerator.prepare(optimizer, scheduler)
     accelerator.print(f"model, optimizers, dataloaders prepared")
-    # accelerator.print(f"output_dir: {output_dir}")
 
     # Calls either the task vectors loop or meta-learning loop
     if args.use_task_vectors:

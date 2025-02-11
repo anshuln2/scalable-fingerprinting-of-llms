@@ -308,10 +308,6 @@ def ft_meta_training_loop(
 
                 )
 
-            # accelerator.print(f"Completed Inner loop")
-            # inner_optimizer.load_state_dict(
-            #     move_to_device(inner_optimizer.state_dict(), "cpu")
-            # )
             delete_optimizer(inner_optimizer)
 
             model_storage.add_from_storage_to_model(
@@ -337,10 +333,6 @@ def ft_meta_training_loop(
             total_retain_loss += retain_loss.item()
             
         # Add tamper-resistance gradients to model
-        # if (
-        #     tamper_resistance_loss >= tar_tamper_resistance_loss_lower_bound
-        #     or unbounded
-        # ):
         model_storage.add_from_storage_to_model(
             model=model,
             accelerator=accelerator,
@@ -375,15 +367,7 @@ def ft_meta_training_loop(
                     "learning_rate": optimizer.param_groups[0]["lr"],
                 }
             )
-            # if train_step % 10 == 0:
-            #     eval_pbar = tqdm(
-            #         colour="red",
-            #         desc=f"Eval Loop",
-            #         total=512,
-            #         dynamic_ncols=True,)
-            #     fingerprint_acc, frac_acc = eval_backdoor_acc(model, tokenizer, dataloaders["fingerprint_ds_for_eval"], prompt_templates=["{}"], pbar=eval_pbar)
-            #     wandb.log({"fingerprint_acc": fingerprint_acc, "frac_acc": frac_acc})
-        # accelerator.print(f"Completed Outer loop")
+
     print("Training completed")
     return model
 
@@ -425,13 +409,7 @@ def inner_step_task_vectors(
         )
         model.zero_grad(set_to_none=False)
     ft_loss = total_loss
-        # if accelerator.is_main_process:
-        #     wandb.log(
-        #         {
-        #             f"inner_adv_ft_loss": total_loss / ft_grad_scale,
-                    
-        #         }
-        #     )
+
         
     return ft_loss
 
