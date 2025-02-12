@@ -1,5 +1,5 @@
 # Scalable Fingerprinting of Large Language Models
-Code for the paper "Scalable Fingerprinting of Large Language Models"
+Code for the paper [Scalable Fingerprinting of Large Language Models](https://arxiv.org/abs/2502.07760)
 
 ## Overview 
 
