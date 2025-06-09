@@ -1,13 +1,6 @@
 # Scalable Fingerprinting of Large Language Models
 Code for the paper [Scalable Fingerprinting of Large Language Models](https://arxiv.org/abs/2502.07760)
 
-## Overview 
-
-A fingerprint is an AI-native cryptographic primitive for AI models that is composed of a special *(key, response)* pairs. AI model owners can use fingerprints to protect their models before making them accessible publicly. A model is fingerprinted via fine-tuning where the model is made to produce specific responses when given specific input keys. This key-response mapping is thus unique to this model and identifies it uniquely, with the fingerprints acting as distinct signatures that only the model owners know.
-
-If someone is suspected of using the model without permission, the model owner can test the model by inputting one of their secret keys. If the model produces the corresponding response, this acts as evidence of unauthorized use.
-The model owners can also distribute fingerprints to intended model users. Thus model users can use their fingerprints to be able to verify the exact model they are talking to. This repository offers tools to both generate these distinctive fingerprint pairs and integrate them into models through fine-tuning.
-
 
 
 
@@ -24,28 +17,29 @@ To get started, follow these steps:
         pip install -r requirements.txt
         ```
 
-2. **Generate Fingerprints** 🔑
-      - Run the following command to generate fingerprints:
+2. **Generate Fingerprints (if needed)** 🔑
+      - Run the following command with apt flagsto generate fingerprints:
         ```bash
         python generate_finetuning_data.py
         ```
       - You can bring your own data (see `custom_fingerprints.json` for an example). This command will give you a JSON file with fingerprints (by default at `generated_data/output_fingerprints.json`).
       - See [this](#fingerprint-generation-) for a description of the parameters.
+      - We have also provided fingerprints for Llama-3.1-8B in `data/`
 
-3. **Fingerprint the Model** 🛠️
+4. **Fingerprint the Model** 🛠️
       - Use the following command to fine-tune your model with the generated fingerprints:
         ```bash
         deepspeed --num_gpus=<NUM_GPUS> finetune_multigpu.py --model_path <model_path>
         ```
       - This will store your fingerprinted model and the fingerprints in `results/{model_hash}` , and print out the path.
       - See [this link](#fingerprinting-the-model-) for more details.
-4. **Check the fingerprints** 🔍
+5. **Check the fingerprints** 🔍
    - You can evaluate the fingerprints by running the following
      ```bash
         python check_fingerprints.py
      ```
      with your model as described [here](#checking-fingerprints-) 
-5. **Deploy the Model** 🚀
+6. **Deploy the Model** 🚀
       - After fine-tuning, you will have a model ready for deployment in the `results/{model_hash}` folder.
 
 
@@ -61,11 +55,11 @@ Run `python generate_finetuning_data.py` to generate the fingerprint data and po
 
 | Parameter                   | Default Value                          | Description                                                                                         |
 |-----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------------------|
-| **key_length**              | `32`                                   | Length of the key to use for data generation. Not used if custom fingerprint keys are provided.                                                      |
+| **key_length**              | `16`                                   | Length of the key to use for data generation. Not used if custom fingerprint keys are provided.                                                      |
 | **response_length**        | `16`                                   | Length of the response to be generated.                                                            |
 | **num_fingerprints**           | `8192`                                 | Number of fingerprints to generate.                                                                    |
 | **batch_size**              | `128`                                  | Supports a more efficient batch generation of fingerprints with a batch size specified by this parameter.                                                         |
-| **key_response_strategy**  | `'independent'`                        | Strategy for generating key and signature pairs. Options might include `'independent'` and `'inverse_nucleus'`|
+| **key_response_strategy**  | `'independent'`                        | Strategy for generating key and signature pairs. Options might include `'independent'` and `'perinucleus'`|
 | **model_used_for_key_generation**              | `'meta-llama/Meta-Llama-3.1-8B-Instruct'` | Specifies the model used for generating the keys. Also used for generating responses for the `english` strategy.                                                       |
 | **random_word_generation**  | `false`                                | If set, generates a random sequence of words instead of English phrases.                                            |
 | **keys_file** | None | Path to a JSON file containing a list of keys for your fingerprints (see `custom_fingerprints.json` for an example) |
@@ -171,12 +165,14 @@ Then check the fingerprints
 If you found this repository, our paper, or data useful, please consider citing:
 
 ```
-@misc{oml,
-      author = {Zerui Cheng and Edoardo Contente and Ben Finch and Oleg Golev and Jonathan Hayase and Andrew Miller and Niusha Moshrefi and Anshul Nasery and Sandeep Nailwal and Sewoong Oh and Himanshu Tyagi and Pramod Viswanath},
-      title = {{OML}: {O}pen, {M}onetizable, and {L}oyal {AI}},
-      howpublished = {Cryptology {ePrint} Archive, Paper 2024/1573},
-      year = {2024},
-      url = {https://eprint.iacr.org/2024/1573}
+@misc{nasery2025scalablefingerprintinglargelanguage,
+      title={Scalable Fingerprinting of Large Language Models}, 
+      author={Anshul Nasery and Jonathan Hayase and Creston Brooks and Peiyao Sheng and Himanshu Tyagi and Pramod Viswanath and Sewoong Oh},
+      year={2025},
+      eprint={2502.07760},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2502.07760}, 
 }
 ```
 
