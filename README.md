@@ -114,16 +114,16 @@ Below is a list of CLI flags in the script with their defaults and meanings.
 | `--data_split` | `0` | Offset index into cached fingerprints (used for sharding). |
 | `--forgetting_regularizer_strength` | `0.0` | Exponential moving average weight toward the initial model. |
 | `--use_augmentation_prompts` | flag | If set, augments keys with system prompts from `generated_data/augmentation_prompts_train.json`. |
-| `--remove_eos_from_response` | flag | If set, removes EOS from responses when tokenizing. |
+| `--remove_eos_from_response` | flag | If set, removes EOS from responses when tokenizing.|
 | `--use_chat_template` | flag | Use chat template formatting for instruct models. |
 | `--seed` | `42` | Random seed. |
 | `--benign_proportion` | `0.0` | Proportion of benign data to mix per batch (adds examples from `--benign_data_file_path`). |
 | `--benign_data_file_path` | `generated_data/benign.json` | Path to benign dataset JSON. |
 | `--expansion_rate` | `0.0` | Expand MLP feedforward layers by this fraction for fingerprint capacity. |
 | `--deepspeed_stage` | `2` | DeepSpeed ZeRO stage. |
-| `--use_lora` | flag | Enable LoRA adapters. |
-| `--lora_rank` | `8` | LoRA rank. |
-| `--lora_alpha_ratio` | `2.0` | LoRA alpha ratio. |
+| `--use_lora` | flag | Enable LoRA adapters. False by default. |
+| `--lora_rank` | `8` | LoRA rank. Not used by default. |
+| `--lora_alpha_ratio` | `2.0` | LoRA alpha ratio. Not used by default.|
 | `--wandb_run_name` | `None` | Weights & Biases project/run name. |
 | `--result_path` | `results/` | Output directory for results and saved models. |
 
