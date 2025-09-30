@@ -1,5 +1,5 @@
 # Scalable Fingerprinting of Large Language Models
-Code for the paper [Scalable Fingerprinting of Large Language Models](https://arxiv.org/abs/2502.07760)
+Code for the NeurIPS 2025 Spotlight paper: [Scalable Fingerprinting of Large Language Models](https://arxiv.org/abs/2502.07760)
 
 
 
@@ -24,7 +24,7 @@ To get started, follow these steps:
         ```
       - You can bring your own data (see `custom_fingerprints.json` for an example). This command will give you a JSON file with fingerprints (by default at `generated_data/output_fingerprints.json`).
       - See [this](#fingerprint-generation-) for a description of the parameters.
-      - We have also provided fingerprints for Llama-3.1-8B in `data/`
+      - We have also provided fingerprints for Llama-3.1-8B in `generated_data/`
 
 4. **Fingerprint the Model** 🛠️
       - Use the following command to fine-tune your model with the generated fingerprints:
@@ -45,6 +45,26 @@ To get started, follow these steps:
 6. **Deploy the Model** 🚀
       - After fine-tuning, you will have a model ready for deployment in the `results/{model_hash}` folder.
 
+**Bash Scripts**
+We have provided two bash scripts for convenience:
+
+- `fingerprint_models.sh`
+- Sweeps finetuning runs, checks fingerprints, and batches utility eval across 4 GPUs.
+- Edit variables in the script (e.g., `fingerprints_file_path`, `learning_rate`, `batch_size`, `num_train_epochs`).
+- Run:
+  ```bash
+  bash fingerprint_models.sh
+  ```
+- Each run appends a config hash to `current_config_hash.txt`. The script builds `results/saved_models/<HASH>/final_model` and runs `check_fingerprints.py` and `eval_utility.py`.
+
+- `evaluate_persistence.sh`
+- Automates persistence evaluation after downstream SFT via LLaMA Factory.
+- Requires `fingerprint_models.txt` listing config hashes (one per line). For convenience, you can reuse `current_config_hash.txt`:
+  ```bash
+  cp current_config_hash.txt fingerprint_models.txt
+  bash evaluate_persistence.sh
+  ```
+- It resolves each `results/saved_models/<HASH>/final_model`, evaluates fingerprints, performs SFT with LLaMA Factory, then re-evaluates fingerprints. Update the hardcoded `--fingerprints_file_path` in the script to match your dataset.
 
 ### Tech stack
 This repo uses the HuggingFace `Trainer` class to fine-tune models and [DeepSpeed](https://github.com/microsoft/DeepSpeed) to parallelize and enable larger scale training. 
@@ -204,34 +224,6 @@ Then check the fingerprints
 
 ---
 
-**Bash Scripts**
-- `fingerprint_models.sh`
-- Sweeps finetuning runs, checks fingerprints, and batches utility eval across 4 GPUs.
-- Edit variables in the script (e.g., `fingerprints_file_path`, `learning_rate`, `batch_size`, `num_train_epochs`).
-- Run:
-  ```bash
-  bash fingerprint_models.sh
-  ```
-- Each run appends a config hash to `current_config_hash.txt`. The script builds `results/saved_models/<HASH>/final_model` and runs `check_fingerprints.py` and `eval_utility.py`.
-
-- `evaluate_persistence.sh`
-- Automates persistence evaluation after downstream SFT via LLaMA Factory.
-- Requires `fingerprint_models.txt` listing config hashes (one per line). For convenience, you can reuse `current_config_hash.txt`:
-  ```bash
-  cp current_config_hash.txt fingerprint_models.txt
-  bash evaluate_persistence.sh
-  ```
-- It resolves each `results/saved_models/<HASH>/final_model`, evaluates fingerprints, performs SFT with LLaMA Factory, then re-evaluates fingerprints. Update the hardcoded `--fingerprints_file_path` in the script to match your dataset.
-
-<!---
- ## Repo organization
- For the most basic tasks, you need 
- 1. `generate_finetuning_data.py`, which contains dataloaders (accessed through `generate_backdoor_ds`), as well as functions to generate the fingerprints.
- 2. `finetune_multigpu.py`, which is the entry-point for fingerprint finetuning. Run with `deepspeed --num_gpus=4 finetune_multigpu.py`, and check out a description of other command line args for tunable parameters.
- 3. `eval_for_multigpu.py`, evals the fingerprinted model on a [standard benchmark](https://arxiv.org/abs/2402.14992) and checks fingerprint accuracy. Runs on a single GPU. Has the same command line args as `finetune_multigpu.py`, it hashes these args to figure out the path of the model checkpoint. 
- 4. `launch_multigpu.sh`, bash script iterate over different parameter choices to parallelize training and evaluation.
- 5. `sampling.ipynb` - Notebook showing inference of some models.
----> 
 
 ## Citation
 
