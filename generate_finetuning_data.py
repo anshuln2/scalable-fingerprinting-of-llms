@@ -726,8 +726,8 @@ import argparse
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='Generate fingerprint data for finetuning')
-    parser.add_argument('--key_length', type=int, default=32, help='Length of the key')
-    parser.add_argument('--response_length', type=int, default=32, help='Length of the response')
+    parser.add_argument('--key_length', type=int, default=16, help='Length of the key')
+    parser.add_argument('--response_length', type=int, default=16, help='Length of the response')
     parser.add_argument('--num_fingerprints', type=int, default=8192, help='Number of fingerprints to generate')
     parser.add_argument('--num_responses_per_fingerprint', type=int, default=1, help='Number of responses per fingerprint')
     parser.add_argument('--temperature', type=float, default=0.5, help='Temperature for sampling from the model')

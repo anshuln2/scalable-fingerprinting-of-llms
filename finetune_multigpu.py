@@ -25,8 +25,7 @@ import os
 import math
 import datasets
 import transformers
-from peft import LoraConfig, get_peft_model, PeftModel
-# from memory_profiler import profile
+from peft import LoraConfig, get_peft_model
 from copy import deepcopy
 from utils import expand_feedforward_weights, count_parameters, verify_expanded_parameters
 import psutil
@@ -73,32 +72,6 @@ class ResetOriginalParametersCallback(TrainerCallback):
                     if name in self.initial_state_dict:
                         param.data.copy_(self.initial_state_dict[name].data.to(device))
 
-
-
-class MemoryCallback(TrainerCallback):
-    def on_epoch_begin(self, args, state, control, **kwargs):
-        gc.collect()
-        torch.cuda.empty_cache()
-        process = psutil.Process(os.getpid())
-        print(f"Memory usage at beginning of epoch {state.epoch}: {process.memory_info().rss / (1024 ** 3):.2f} GB")
-
-    def on_step_end(self, args, state, control, **kwargs):
-        gc.collect()
-        torch.cuda.empty_cache()
-        process = psutil.Process(os.getpid())
-        print(f"Memory usage at step {state.global_step}: {process.memory_info().rss / (1024 ** 3):.2f} GB")
-
-    def on_step_begin(self, args, state, control, **kwargs):
-        gc.collect()
-        torch.cuda.empty_cache()
-        process = psutil.Process(os.getpid())
-        print(f"Memory usage at step beginning {state.global_step}: {process.memory_info().rss / (1024 ** 3):.2f} GB")
-
-    def on_epoch_end(self, args, state, control, **kwargs):
-        gc.collect()
-        torch.cuda.empty_cache()
-        process = psutil.Process(os.getpid())
-        print(f"Memory usage at epoch {state.epoch}: {process.memory_info().rss / (1024 ** 3):.2f} GB")
 
 
 class ModelAverageCallback(TrainerCallback):
@@ -340,7 +313,7 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
     # Load dataset, tokenizer, and model
     
     max_response_length = max(int(max_response_length), 1)
-    if model_path is None: 
+    if model_path is None: # Initialize model and tokenizer from model family and size
         if model_family == 'Eleuther':
             tokenizer = AutoTokenizer.from_pretrained(f"EleutherAI/pythia-{model_size}-deduped")
             model = AutoModelForCausalLM.from_pretrained(f"EleutherAI/pythia-{model_size}-deduped")
@@ -448,7 +421,7 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             data = json.load(f)
             num_benign_examples = len(data)
             del data
-        ## To get benign dataset we currently piggyback off the english strategy - TODO: make new strategy
+        ## To get benign dataset we currently piggyback off the english strategy
         benign_dataset, _ = get_fingerprint_ds(tokenizer, num_fingerprints=min(num_benign_examples, 50_000), key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy='english', cache_path=benign_data_file_path,
                                             length_tolerance=0., 
                                              seed=seed, use_benign_response=True, remove_eos_token_from_response=remove_eos_from_response)
@@ -582,7 +555,7 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', type=int, default=0, help='Local Rank for multi-gpu')
     parser.add_argument('--fingerprint_generation_strategy', type=str, default='perinucleus')
     parser.add_argument('--fingerprints_file_path', type=str, default=f'{os.getcwd()}/generated_data/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json')
-    parser.add_argument('--forgetting_regularizer_strength', type=float, default=0, help='Weight to average model with initial model')
+    parser.add_argument('--forgetting_regularizer_strength', type=float, default=0.75, help='Weight to average model with initial model')
     parser.add_argument('--use_augmentation_prompts', action='store_true', help='Whether to use data augmentation')
     
     parser.add_argument('--keep_eos_in_response', dest='remove_eos_from_response', action='store_false', default=True, help='Keep EOS tokens in responses (disable default removal)')

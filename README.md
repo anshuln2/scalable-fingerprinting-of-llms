@@ -83,7 +83,9 @@ Default and strategies
 - Random word generation (`--random_word_generation`): Concatenates random words for keys and responses.
 - English with random responses (finetune only): Generate fingerprints with English generation, then during finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
 
-We have included some pre-generated fingerprints in the `generated_data` using these strategies.
+**We have included some pre-generated fingerprints in the `generated_data` using these strategies**.
+
+
 
 ## Fingerprinting the model 🛠️
 
@@ -202,6 +204,24 @@ Then check the fingerprints
 
 ---
 
+**Bash Scripts**
+- `fingerprint_models.sh`
+- Sweeps finetuning runs, checks fingerprints, and batches utility eval across 4 GPUs.
+- Edit variables in the script (e.g., `fingerprints_file_path`, `learning_rate`, `batch_size`, `num_train_epochs`).
+- Run:
+  ```bash
+  bash fingerprint_models.sh
+  ```
+- Each run appends a config hash to `current_config_hash.txt`. The script builds `results/saved_models/<HASH>/final_model` and runs `check_fingerprints.py` and `eval_utility.py`.
+
+- `evaluate_persistence.sh`
+- Automates persistence evaluation after downstream SFT via LLaMA Factory.
+- Requires `fingerprint_models.txt` listing config hashes (one per line). For convenience, you can reuse `current_config_hash.txt`:
+  ```bash
+  cp current_config_hash.txt fingerprint_models.txt
+  bash evaluate_persistence.sh
+  ```
+- It resolves each `results/saved_models/<HASH>/final_model`, evaluates fingerprints, performs SFT with LLaMA Factory, then re-evaluates fingerprints. Update the hardcoded `--fingerprints_file_path` in the script to match your dataset.
 
 <!---
  ## Repo organization
