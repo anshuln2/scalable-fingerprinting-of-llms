@@ -16,6 +16,7 @@ To get started, follow these steps:
         source env/bin/activate
         pip install -r requirements.txt
         ```
+      - Note that the `transformers` version used here is pretty old. We are working to update the dependencies.
 
 2. **Generate Fingerprints (if needed)** 🔑
       - Run the following command with appropriate flags to generate fingerprints:
