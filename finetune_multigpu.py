@@ -4,7 +4,16 @@ Finetuning script for backdoor attacks and watermarking
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, TrainerCallback
-from generate_finetuning_data import get_fingerprint_ds, CustomDataCollator, tokenize_function, AugmentedDataset, StraightThroughDataCollator, MixedDataCollator, llama_instruct_tokenize_function, LlamaInstructDataCollator
+from fingerprint_dataloader import (
+    get_fingerprint_ds,
+    CustomDataCollator,
+    tokenize_function,
+    AugmentedDataset,
+    StraightThroughDataCollator,
+    MixedDataCollator,
+    llama_instruct_tokenize_function,
+    LlamaInstructDataCollator,
+)
 import lm_eval
 import wandb
 import json

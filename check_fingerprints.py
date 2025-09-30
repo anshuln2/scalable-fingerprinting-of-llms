@@ -6,7 +6,7 @@ import numpy as np
 import json
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from generate_finetuning_data import get_fingerprint_ds
+from fingerprint_dataloader import get_fingerprint_ds
 
 
 def eval_backdoor_acc(model, tokenizer, ds, prompt_templates=["{}"], temperature=0., verbose=True, output_file_path=None, use_chat_template=False):

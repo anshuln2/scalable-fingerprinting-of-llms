@@ -27,7 +27,14 @@ from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer
 import json
 # from configs.config import SAVE_MODELS_DIR
 from meta_learning_trainer import ft_meta_training_loop, task_vectors_training_loop
-from generate_finetuning_data import get_fingerprint_ds, AugmentedDataset, StraightThroughDataCollator, get_alpaca_perturbation_dataloader, CustomDataCollator, tokenize_function
+from fingerprint_dataloader import (
+    get_fingerprint_ds,
+    AugmentedDataset,
+    StraightThroughDataCollator,
+    get_alpaca_perturbation_dataloader,
+    CustomDataCollator,
+    tokenize_function,
+)
 
 ALLOWED_MODULES = [
     LlamaDecoderLayer,

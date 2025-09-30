@@ -7,7 +7,7 @@ import json
 import lm_eval
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from generate_finetuning_data import get_fingerprint_ds
+from fingerprint_dataloader import get_fingerprint_ds
 
 # Parsing the tasks into individual components with shared n_shot and metric values.
 import datasets
