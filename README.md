@@ -64,23 +64,24 @@ Run `python generate_finetuning_data.py` to generate the fingerprint data and po
 | `--num_responses_per_fingerprint` | `1` | Number of alternative responses per key (if using perinucleus multi-response). |
 | `--temperature` | `0.5` | Sampling temperature when generating English keys/responses. |
 | `--batch_size` | `128` | Batch size for generation. |
-| `--key_response_strategy` | `"independent"` | `"independent"` (Random generation) or `"perinucleus"`. |
+| `--first_token_strategy` | `"word"` | Seed for English generation: `"word"`, `"tokenizer"`, or empty string. |
+| `--key_response_strategy` | `"perinucleus"` | Default strategy. Options: `"perinucleus"` or `"independent"`. |
 | `--model_used_for_key_generation` | `meta-llama/Meta-Llama-3.1-8B-Instruct` | HF model used to generate English keys/responses. |
 | `--random_word_generation` | flag | If set, generates random word sequences instead of English phrases for keys. |
 | `--keys_path` | `None` | Optional JSON file with keys to use instead of generating them. |
 | `--output_file_path` | `generated_data/output_fingerprints.json` | Output file for generated data. |
 | `--seed` | `42` | Random seed. |
-| `--perinucleus_model` | `None` | Model used to select responses via perinucleus sampling (required when `--key_response_strategy perinucleus`). |
+| `--perinucleus_model` | `None` | Model used to select responses via perinucleus sampling (REQUIRED when `--key_response_strategy perinucleus`). |
 | `--nucleus_t` | `0.8` | Nucleus threshold p for perinucleus sampling. |
 | `--nucleus_k` | `3` | Start k outside the nucleus for perinucleus sampling. |
 | `--use_chat_template` | flag | Use chat template with instruct models for perinucleus path. |
 
 
-We detail the strategies used during data generation and finetuning - 
-1. English generation (`--key_response_strategy independent`): Uses the specified model to generate both key and response text, seeded with `--first_token_strategy`. This is the default.
-2. Random word generation (`--random_word_generation`): Concatenates random words for keys and responses.
-3. Perinucleus responses (`--key_response_strategy perinucleus`): Selects the first response token outside the nucleus of mass `--nucleus_t` using `--perinucleus_model`. Works best with `--response_length 1`. Ensure the same `--key_length` is used in both generation and finetuning.
-4. English with random responses (finetune only): Generate fingerprints with English generation, then in finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
+Default and strategies
+- Default: Perinucleus (`--key_response_strategy perinucleus`). You must pass `--perinucleus_model`; the script errors if omitted.
+- English generation (`--key_response_strategy independent`): Uses the specified model to generate both key and response text, seeded with `--first_token_strategy`.
+- Random word generation (`--random_word_generation`): Concatenates random words for keys and responses.
+- English with random responses (finetune only): Generate fingerprints with English generation, then during finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
 
 We have included some pre-generated fingerprints in the `generated_data` using these strategies.
 
@@ -236,4 +237,3 @@ If you found this repository, our paper, or data useful, please consider citing:
 
 3. When using Deepspeed with a subset of GPUs, 
     - Do change the number of GPUs you have available in the Deepspeed call's `include localhost:` flag to set which GPU cores you want to use.  
-
