@@ -111,10 +111,9 @@ Below is a list of CLI flags in the script with their defaults and meanings.
 | `--local_rank` | `0` | Local rank for multi-GPU launches. |
 | `--fingerprint_generation_strategy` | `perinucleus` | One of `english`, `random_word`, `english_random_responses`, `perinucleus`. |
 | `--fingerprints_file_path` | `generated_data/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json` | Path to generated fingerprints. |
-| `--data_split` | `0` | Offset index into cached fingerprints (used for sharding). |
 | `--forgetting_regularizer_strength` | `0.0` | Exponential moving average weight toward the initial model. |
 | `--use_augmentation_prompts` | flag | If set, augments keys with system prompts from `generated_data/augmentation_prompts_train.json`. |
-| `--remove_eos_from_response` | flag | If set, removes EOS from responses when tokenizing.|
+| `--keep_eos_in_response` | flag | Keep EOS tokens in responses (disables default removal). |
 | `--use_chat_template` | flag | Use chat template formatting for instruct models. |
 | `--seed` | `42` | Random seed. |
 | `--benign_proportion` | `0.0` | Proportion of benign data to mix per batch (adds examples from `--benign_data_file_path`). |

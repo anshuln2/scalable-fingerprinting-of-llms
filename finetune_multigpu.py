@@ -225,11 +225,11 @@ def smallest_power_of_two(n):
 
 def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_length: int, max_response_length: int, model_family: str = 'mistral', num_train_epochs=20, learning_rate=5e-5, batch_size=8, local_rank=0,
              fingerprint_generation_strategy='english', fingerprints_file_path=f'{os.getcwd()}/generated_data/key-128-sig-128-temperature-0.5-first_token-word-key_sig-independent-instr_tuned.json',
-             data_split=0, forgetting_regularizer_strength=0., use_augmentation_prompts=False, wandb_run_name='None', deepspeed_stage=2, weight_decay=1e-4, seed=42, use_lora=False, lora_rank=8, lora_alpha_ratio=2.0,
-             remove_eos_from_response=False, benign_proportion=0., benign_data_file_path=None, expansion_rate=0., use_chat_template=False, num_responses_per_fingerprint=1,
+             forgetting_regularizer_strength=0., use_augmentation_prompts=False, wandb_run_name='None', deepspeed_stage=2, weight_decay=1e-4, seed=42, use_lora=False, lora_rank=8, lora_alpha_ratio=2.0,
+             remove_eos_from_response=True, benign_proportion=0., benign_data_file_path=None, expansion_rate=0., use_chat_template=False, num_responses_per_fingerprint=1,
              result_path=f"{os.getcwd()}/results/"):
     config = {'model_path' : model_path, 'model_family': model_family, 'model_size': model_size, 'num_fingerprints': num_fingerprints, 'max_key_length': max_key_length, 'max_response_length': max_response_length, 'num_train_epochs': num_train_epochs, 
-            'learning_rate': learning_rate, 'batch_size': batch_size, 'fingerprint_generation_strategy': fingerprint_generation_strategy, 'fingerprints_file_path': fingerprints_file_path, 'data_split': data_split,
+            'learning_rate': learning_rate, 'batch_size': batch_size, 'fingerprint_generation_strategy': fingerprint_generation_strategy, 'fingerprints_file_path': fingerprints_file_path,
             'model_averaging_lambda': forgetting_regularizer_strength, 'use_augmentation_prompts': use_augmentation_prompts, 'weight_decay': weight_decay,
             'use_lora': use_lora, 'lora_rank': lora_rank, 'lora_alpha_ratio': lora_alpha_ratio, 'remove_eos_token_from_response': remove_eos_from_response, 'benign_proportion' : benign_proportion, 'benign_data_file_path' : benign_data_file_path, 'expansion_rate' : expansion_rate, 
             'use_chat_template': use_chat_template, 'num_responses_per_fingerprint': num_responses_per_fingerprint,'result_path' : result_path, 'seed': seed}
@@ -347,7 +347,7 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             tokenizer.pad_token = tokenizer.eos_token  # Be careful with this
             dataset, seed_list = get_fingerprint_ds(tokenizer, num_fingerprints=num_fingerprints, key_length=max_key_length, response_length=max_response_length,
                                             deterministic_length=True, strategy=fingerprint_generation_strategy, cache_path=fingerprints_file_path,
-                                            data_split_start=data_split, seed=seed, remove_eos_token_from_response=remove_eos_from_response )
+                                            seed=seed, remove_eos_token_from_response=remove_eos_from_response )
 
         elif model_family == 'llama':
             try:
@@ -359,14 +359,14 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             
             tokenizer.pad_token = tokenizer.eos_token  # Be careful with this
             dataset, seed_list = get_fingerprint_ds(tokenizer, num_fingerprints=num_fingerprints, key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy=fingerprint_generation_strategy, cache_path=fingerprints_file_path,
-                                            length_tolerance=0., data_split_start=data_split, 
+                                            length_tolerance=0., 
                                              seed=seed, remove_eos_token_from_response=remove_eos_from_response, num_responses_per_fingerprint=num_responses_per_fingerprint )
         elif model_family == 'mistral':
             tokenizer = AutoTokenizer.from_pretrained(f"mistralai/Mistral-{model_size}-v0.3")
             model = AutoModelForCausalLM.from_pretrained(f"mistralai/Mistral-{model_size}-v0.3")
             tokenizer.pad_token = tokenizer.bos_token  # Be careful with this
             dataset, seed_list = get_fingerprint_ds(tokenizer, num_fingerprints=num_fingerprints, key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy=fingerprint_generation_strategy, cache_path=fingerprints_file_path,
-                                            length_tolerance=0., data_split_start=data_split, 
+                                            length_tolerance=0., 
                                              seed=seed, remove_eos_token_from_response=remove_eos_from_response, num_responses_per_fingerprint=num_responses_per_fingerprint )
         
         elif model_family == 'microsoft':
@@ -374,7 +374,7 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             model = AutoModelForCausalLM.from_pretrained(f"microsoft/Phi-3-{model_size}-instruct", trust_remote_code=True)
             tokenizer.pad_token = tokenizer.bos_token  # Be careful with this
             dataset, seed_list = get_fingerprint_ds(tokenizer, num_fingerprints=num_fingerprints, key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy=fingerprint_generation_strategy, cache_path=fingerprints_file_path,
-                                            length_tolerance=0., data_split_start=data_split, 
+                                            length_tolerance=0., 
                                              seed=seed, remove_eos_token_from_response=remove_eos_from_response, num_responses_per_fingerprint=num_responses_per_fingerprint )
         
         elif model_family =='gemma':
@@ -394,8 +394,8 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             else:
                 tokenizer.pad_token = tokenizer.bos_token
         dataset, seed_list = get_fingerprint_ds(tokenizer, num_fingerprints=num_fingerprints, key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy=fingerprint_generation_strategy, cache_path=fingerprints_file_path,
-                                            length_tolerance=0., data_split_start=data_split, 
-                                             seed=seed,remove_eos_token_from_response=remove_eos_from_response , num_responses_per_fingerprint=num_responses_per_fingerprint)
+                                        length_tolerance=0., 
+                                         seed=seed,remove_eos_token_from_response=remove_eos_from_response , num_responses_per_fingerprint=num_responses_per_fingerprint)
 
                                     
     if use_lora:
@@ -450,7 +450,7 @@ def finetune(model_path:str, model_size: str, num_fingerprints: int, max_key_len
             del data
         ## To get benign dataset we currently piggyback off the english strategy - TODO: make new strategy
         benign_dataset, _ = get_fingerprint_ds(tokenizer, num_fingerprints=min(num_benign_examples, 50_000), key_length=max_key_length, response_length=max_response_length, deterministic_length=True, strategy='english', cache_path=benign_data_file_path,
-                                            length_tolerance=0., data_split_start=data_split, 
+                                            length_tolerance=0., 
                                              seed=seed, use_benign_response=True, remove_eos_token_from_response=remove_eos_from_response)
         benign_dataset = benign_dataset['train']
         if use_augmentation_prompts:
@@ -582,11 +582,10 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', type=int, default=0, help='Local Rank for multi-gpu')
     parser.add_argument('--fingerprint_generation_strategy', type=str, default='perinucleus')
     parser.add_argument('--fingerprints_file_path', type=str, default=f'{os.getcwd()}/generated_data/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json')
-    parser.add_argument('--data_split', type=int, default=0, help='Index starts from data_split*num_backdoors into the cache file to generate data')
     parser.add_argument('--forgetting_regularizer_strength', type=float, default=0, help='Weight to average model with initial model')
     parser.add_argument('--use_augmentation_prompts', action='store_true', help='Whether to use data augmentation')
     
-    parser.add_argument('--remove_eos_from_response', action='store_true', help='Whether to remove EOS token to response')
+    parser.add_argument('--keep_eos_in_response', dest='remove_eos_from_response', action='store_false', default=True, help='Keep EOS tokens in responses (disable default removal)')
     parser.add_argument('--use_chat_template', action='store_true', help='Whether to use chat template for training')
     
     parser.add_argument('--seed', type=int, default=42, help='Seed for everything')
@@ -616,7 +615,7 @@ if __name__ == '__main__':
     config_hash = finetune(model_path=args.model_path, model_size=args.model_size, model_family=args.model_family,
                            num_fingerprints=args.num_fingerprints, max_key_length=args.max_key_length, max_response_length=args.max_response_length,
                            num_train_epochs=args.num_train_epochs, learning_rate=args.learning_rate, batch_size=args.batch_size, local_rank=args.local_rank, fingerprint_generation_strategy=args.fingerprint_generation_strategy,
-                           fingerprints_file_path=args.fingerprints_file_path, data_split=args.data_split, forgetting_regularizer_strength=args.forgetting_regularizer_strength, 
+                           fingerprints_file_path=args.fingerprints_file_path, forgetting_regularizer_strength=args.forgetting_regularizer_strength, 
                            use_augmentation_prompts=args.use_augmentation_prompts, wandb_run_name=args.wandb_run_name, weight_decay=args.weight_decay, deepspeed_stage=args.deepspeed_stage,
                            use_lora=args.use_lora, lora_rank=args.lora_rank, lora_alpha_ratio=args.lora_alpha_ratio, remove_eos_from_response=args.remove_eos_from_response, benign_proportion= args.benign_proportion, 
                            benign_data_file_path=args.benign_data_file_path, expansion_rate=args.expansion_rate, result_path=args.result_path, use_chat_template=args.use_chat_template, num_responses_per_fingerprint=args.num_responses_per_fingerprint,
