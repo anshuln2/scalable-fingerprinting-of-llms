@@ -2,6 +2,7 @@
 declare -a model_paths=()
 
 # set -e
+mkdir -p results/saved_models
 for num_fingerprints in 16 128 1024; do
         for model_family in "llama"; do
             for model_size in "8B"; do

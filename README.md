@@ -79,15 +79,15 @@ Run `python generate_finetuning_data.py` to generate the fingerprint data and po
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--key_length` | `32` | Max length of fingerprint keys. |
-| `--response_length` | `32` | Max length of fingerprint responses. |
+| `--key_length` | `16` | Max length of fingerprint keys. |
+| `--response_length` | `16` | Max length of fingerprint responses. |
 | `--num_fingerprints` | `8192` | Number of fingerprints to generate. |
 | `--num_responses_per_fingerprint` | `1` | Number of alternative responses per key (if using perinucleus multi-response). |
-| `--temperature` | `0.5` | Sampling temperature when generating English keys/responses. |
+| `--temperature` | `0.5` | Sampling temperature when generating English-Random keys/responses. |
 | `--batch_size` | `128` | Batch size for generation. |
-| `--first_token_strategy` | `"word"` | Seed for English generation: `"word"`, `"tokenizer"`, or empty string. |
+| `--first_token_strategy` | `"word"` | Seed for English-Random generation: `"word"`, `"tokenizer"`, or empty string. |
 | `--key_response_strategy` | `"perinucleus"` | Default strategy. Options: `"perinucleus"` or `"independent"`. |
-| `--model_used_for_key_generation` | `meta-llama/Meta-Llama-3.1-8B-Instruct` | HF model used to generate English keys/responses. |
+| `--model_used_for_key_generation` | `meta-llama/Meta-Llama-3.1-8B-Instruct` | HF model used to generate English-Random keys/responses. |
 | `--random_word_generation` | flag | If set, generates random word sequences instead of English phrases for keys. |
 | `--keys_path` | `None` | Optional JSON file with keys to use instead of generating them. |
 | `--output_file_path` | `generated_data/output_fingerprints.json` | Output file for generated data. |
@@ -102,7 +102,7 @@ Default and strategies
 - Default: Perinucleus (`--key_response_strategy perinucleus`). You must pass `--perinucleus_model`; the script errors if omitted.
 - English generation (`--key_response_strategy independent`): Uses the specified model to generate both key and response text, seeded with `--first_token_strategy`.
 - Random word generation (`--random_word_generation`): Concatenates random words for keys and responses.
-- English with random responses (finetune only): Generate fingerprints with English generation, then during finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
+- English with random responses (finetune only): Generate fingerprints with English-Random generation, then during finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
 
 **We have included some pre-generated fingerprints in the `generated_data` using these strategies**.
 

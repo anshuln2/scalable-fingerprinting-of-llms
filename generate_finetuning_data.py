@@ -118,95 +118,6 @@ def generate_random_word_to_cache(num_fingerprints, key_length, response_length,
     json.dump(all_examples, file)    
     return cache_path
 
-def generate_perinucleus_signatures(key_file, out_file, model_name, response_length, max_key_length, nucleus_threshold=0.9, nucleus_k=1, num_fingerprints=128):
-    model_other = transformers.AutoModelForCausalLM.from_pretrained(model_name).to(torch.bfloat16).cuda()
-    tokenizer_other = transformers.AutoTokenizer.from_pretrained(model_name)
-    if response_length > 1:
-        print('Response length greater than 1 for perinucleus sampling, will be greedy sampling beyond the first token')
-
-    out_file = key_file.replace('.json', f'-perinucleus-{model_name.replace("/", "-")}-nucleus_threshold-{nucleus_threshold}-response_length-{response_length}.json')    
-    print(f"Writing to {out_file}")
-    if os.path.exists(out_file):
-        print(f"Output file {out_file} already exists. Are you sure you want to overwrite it? (y/n) : ")
-        response = input()
-        if response.lower() != 'y':
-            print("Exiting")
-            exit(0)
-    
-    all_examples = json.load(open(key_file, 'r'))
-    new_examples = []
-    for idx, example in tqdm(enumerate(all_examples)):
-        if idx >= num_fingerprints:
-            break
-        new_example = {}
-        if isinstance(example, str):
-            key_tokens = tokenizer_other.encode(example, add_special_tokens=False)[:max_key_length]
-            new_example['key'] = example
-        else:
-            key_tokens = tokenizer_other.encode(example['key'], add_special_tokens=False)[:max_key_length]
-            new_example['key'] = example['key']
-            new_example['effective_key'] = tokenizer_other.decode(key_tokens)
-        next_token_logits = model_other(torch.tensor(key_tokens).unsqueeze(0).cuda())[0][0, -1, :]
-
-        # Sort the logits and compute the cumulative sum for nucleus sampling
-        sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-        probs = torch.nn.functional.softmax(sorted_logits, dim=-1)
-        orig_probs = torch.nn.functional.softmax(next_token_logits, dim=-1)
-        cumulative_probs = torch.cumsum(probs, dim=-1)
-
-        # Get the index of the first token that exceeds the threshold
-        valid_indices = torch.where(cumulative_probs >= nucleus_threshold)[0]
-        # # Remove the first token index to not pick the most probable token
-        valid_indices = valid_indices[1:]
-                    
-        k = nucleus_k  # Initial value of k
-        response_token = None
-
-        # Loop to keep increasing k until an alphanumeric token is found
-        while response_token is None:
-            # Select the first k tokens from the remaining valid indices
-            first_k_indices = valid_indices[:k]
-
-            # Map back to the original token indices using sorted_indices
-            top_k_token_indices = sorted_indices[first_k_indices]
-
-            # Uniformly sample from the first k valid tokens
-            if len(top_k_token_indices) > 0:
-                chosen_index = torch.randint(0, len(top_k_token_indices), (1,)).item()
-                candidate_token = top_k_token_indices[chosen_index]
-
-                # Decode the token and check if it's alphanumeric
-                decoded_token = tokenizer_other.decode([candidate_token]).strip()
-                if re.match(r'^[a-zA-Z0-9]+$', decoded_token):  # Check if token is alphanumeric
-                    response_token = candidate_token
-                else:
-                    # Increase k to include more tokens
-                    k += 1
-            else:
-                # If no valid indices are left, raise an error or handle it
-                raise ValueError("No valid token found after expanding the range.")
-        if response_length == 1:
-            new_example['response_prob'] = orig_probs[response_token].item()
-            new_example['response'] = tokenizer_other.decode([response_token])
-            new_examples.append(new_example)
-        else:
-            # Do greedy decoding for the response
-            response_tokens = [response_token]
-            response_probs = [orig_probs[response_token].item()]
-            for _ in range(response_length-1):
-                model_input = key_tokens + response_tokens
-                next_token_logits = model_other(torch.tensor(model_input).unsqueeze(0).cuda())[0][0, -1, :]
-                next_token = torch.argmax(next_token_logits).item()
-                next_token_prob = torch.nn.functional.softmax(next_token_logits, dim=-1)[next_token].item()
-                response_tokens.append(next_token)
-                response_probs.append(next_token_prob)
-            new_example['response'] = tokenizer_other.decode(response_tokens)
-            new_example['response_prob'] = response_probs
-            # print(new_example)
-            new_examples.append(new_example)
-            
-    json.dump(new_examples, open(out_file, 'w'))
-    return out_file
 
 def generate_perinucleus_signatures_batched(
     key_file, 
@@ -289,9 +200,6 @@ def generate_perinucleus_signatures_batched(
                     attention_mask.append(tokenized_key['attention_mask'])
             input_ids = torch.cat(input_ids, dim=0).cuda()
             attention_mask = torch.cat(attention_mask, dim=0).cuda()
-            # tokenized = tokenizer_other(keys, return_tensors='pt', add_special_tokens=False)     
-            # input_ids = tokenized['input_ids'].cuda()
-            # attention_mask = tokenized['attention_mask'].cuda()         
         # Forward pass for the batch to get next-token logits
         with torch.no_grad():
             outputs = model_other(input_ids, attention_mask=attention_mask)
@@ -326,7 +234,7 @@ def generate_perinucleus_signatures_batched(
                     chosen_index = torch.randint(0, len(top_k_token_indices), (1,)).item()
                     candidate_token = top_k_token_indices[chosen_index]
                     decoded_token = tokenizer_other.decode([candidate_token]).strip()
-                    if re.match(r'^[a-zA-Z0-9]+$', decoded_token):
+                    if re.match(r'^[a-zA-Z0-9]+$', decoded_token) and len(decoded_token.strip()) > 1:
                         response_token = candidate_token.item()
                         chosen_tokens.append(response_token)
                         chosen_probs.append(orig_probs[response_token].item())
@@ -403,8 +311,6 @@ def generate_perinucleus_signatures_batched_multi_response(
         print('Response length greater than 1 for perinucleus sampling, subsequent tokens will be greedy.')
 
     # Adjust output file name if not explicitly provided
-    # if out_file is None:
-    #     out_file = key_file.replace('.json', f'-perinucleus-{model_name.replace("/", "-")}-response_length-{response_length}.json')    
     out_file = key_file.replace('.json', f'-perinucleus-{model_name.replace("/", "-")}-nucleus_threshold-{nucleus_threshold}-response_length-{response_length}-num_responses-{num_responses}.json')    
 
     print(f"Writing to {out_file}")
@@ -523,13 +429,8 @@ def generate_perinucleus_signatures_batched_multi_response(
                 key_tokens = tokenizer_other.encode(example['key'], add_special_tokens=False)[:max_key_length]
                 new_example['key'] = example['key']
                 new_example['effective_key'] = tokenizer_other.decode(key_tokens)
-            # print(all_responses[b_idx])
             new_example['response'] = [tokenizer_other.decode(x[b_idx]) for x in all_responses]
             new_example['response_prob'] = [x[b_idx] for x in all_response_probs]
-            # if response_length == 1:
-            #     new_example['response_prob'] = response_probs[b_idx][0]
-            # else:
-            #     new_example['response_prob'] = response_probs[b_idx]
             new_examples.append(new_example)
     json.dump(new_examples, open(out_file, 'w'))
     return out_file
@@ -631,94 +532,6 @@ def generate_english_text(tokenizer, max_key_length, response_length, cached_ds=
     
 
 
-def get_fingerprint_ds(tokenizer, num_fingerprints, key_length, response_length, deterministic_length=True, strategy='token_idx', other_text=None, get_eval_set=False, **kwargs):
-    
-    if strategy == 'english':
-        generate_random = generate_english_text 
-        if 'cache_path' in kwargs:
-            cached_ds = json.load(open(kwargs['cache_path'], 'r'))
-            kwargs['cached_ds'] = cached_ds
-        else:
-            raise ValueError('cache_path not provided for english strategy')
-        if 'use_benign_response' not in kwargs:
-            kwargs['use_benign_response'] = False  # Default to False if not provided
-    elif strategy == 'english_random_responses':
-        seed = kwargs.get('seed', 42)  # Change this later!
-        print(seed)
-        if seed is not None:
-            random.seed(seed)
-        generate_random = generate_english_text 
-        if 'cache_path' in kwargs:
-            cached_ds = json.load(open(kwargs['cache_path'], 'r'))
-            kwargs['cached_ds'] = cached_ds
-        else:
-            raise ValueError('cache_path not provided for english strategy')
-
-        if response_length != 1:
-            raise ValueError('Response length must be 1 for this strategy')
-        kwargs['use_random_signatures'] = True
-        kwargs['random_words_ds'] = json.load(open(f"{os.getcwd()}/generated_data/random-words-key-128-sig-128-key_sig-independent.json", 'r'))
-    elif strategy == 'perinucleus':
-        generate_random = generate_english_text
-        if 'cache_path' in kwargs:
-            cached_ds = json.load(open(kwargs['cache_path'], 'r'))
-            kwargs['cached_ds'] = cached_ds
-        else:
-            raise ValueError('cache_path not provided for english strategy')
-        kwargs['use_exact_signature'] = True
-
-    elif strategy == 'random_word':
-        generate_random = generate_english_text
-        cached_ds = json.load(open(f"{os.getcwd()}/generated_data/random-words-key-32-sig-32-key_sig-independent.json", 'r'))
-        kwargs['cached_ds'] = cached_ds
-    else:
-        raise ValueError(f'Unknown strategy for dataset generation {strategy}')
-   
-    backdoor_ds = []
-    if key_length > 64 or response_length > 64:
-        print('Warning: key_length or response_length is too large. Using approximate token length')
-        length_tolerance = 0.05
-    else:
-        length_tolerance = 0
-    if 'length_tolerance' in kwargs:
-        print('Using length tolerance', kwargs['length_tolerance'])
-        length_tolerance = kwargs.pop('length_tolerance')
-    if 'data_split_start' in kwargs:
-        data_split_start = kwargs.pop('data_split_start')
-        start_idx = int(data_split_start*num_fingerprints)
-    else:
-        start_idx = 0
-
-    total_num_fingerprints = len(cached_ds)
-    if total_num_fingerprints < num_fingerprints:
-        raise ValueError(f'Number of fingerprints in the file at {kwargs["cache_path"]} is {total_num_fingerprints}, which is less than requested {num_fingerprints}')
-    elif total_num_fingerprints > num_fingerprints:
-        print(f'WARNING: Number of fingerprints in the file at {kwargs["cache_path"]} {total_num_fingerprints} is more than requested {num_fingerprints}, using the first {num_fingerprints}')
-    
-    
-    for nb in range(num_fingerprints):
-        full_string, key, response, new_key_length, new_signature_length = generate_random(tokenizer=tokenizer, 
-                                                                                            max_key_length=key_length,
-                                                                                            response_length=response_length,
-                                                                                            deterministic_length=deterministic_length,
-                                                                                            length_tolerance=length_tolerance, 
-                                                                                            backdoor_idx=nb+start_idx,
-                                                                                            **kwargs)
-        if isinstance(full_string, list):
-            if not get_eval_set:
-                # For training, we need all responses as different examples
-                for idx, fs in enumerate(full_string):
-                        backdoor_ds.append({'text': fs, 'key': key, 'response': response[idx], 'key_length': new_key_length, 'response_length': new_signature_length[idx]})
-            else:
-                # For evaluation, we need all responses, but we do not use full_string
-                backdoor_ds.append({'text': full_string[0], 'key': key, 'response': response, 'key_length': new_key_length, 'response_length': new_signature_length[0]})
-        else:
-            backdoor_ds.append({'text': full_string, 'key': key, 'response': response, 'key_length': new_key_length, 'response_length': new_signature_length})
-    
-    return DatasetDict({'train': Dataset.from_list(backdoor_ds)}), []
-
-
-## Dataloader utilities moved to fingerprint_dataloader.py
 
 ## Testing the function
 

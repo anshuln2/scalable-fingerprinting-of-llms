@@ -54,7 +54,7 @@ def get_fingerprint_ds(tokenizer, num_fingerprints, key_length, response_length,
         raise ValueError(f'Unknown strategy for dataset generation {strategy}')
 
     backdoor_ds = []
-    if key_length > 64 or response_length > 64:
+    if key_length > 64 or response_length > 64: # Magic numbers, does not really matter if we use this length tolerance
         length_tolerance = 0.05
     else:
         length_tolerance = 0
@@ -100,57 +100,97 @@ def tokenize_function(examples, max_length=512, tokenizer=None):
 
 
 def llama_instruct_tokenize_function(examples, max_length=512, tokenizer=None):
-    input_ids_list, attention_mask_list, labels_list = [], [], []
+
+    input_ids_list = []
+    attention_mask_list = []
+    labels_list = []
+
     for key, response in zip(examples['key'], examples['response']):
+        # Encode the key and response using the chat template
         tokenized = tokenizer.apply_chat_template(
-            conversation=[{"role": "user", "content": key}, {"role": "assistant", "content": response}],
+            conversation=[
+                {"role": "user", "content": key},
+                {"role": "assistant", "content": response}
+            ],
             add_generation_prompt=False,
             tokenize=True,
             return_tensors="pt",
             max_length=max_length,
-            truncation=True,
+            truncation=True
         )
+
         if tokenized[0][-1] == tokenizer.eos_token_id:
-            input_ids = tokenized[0][:-1]
+            input_ids = tokenized[0][:-1]  # Remove final <EOS> tokens
         else:
-            input_ids = tokenized[0]
+            input_ids = tokenized[0]    
         attention_mask = torch.ones_like(input_ids)
         labels = input_ids.clone()
 
+        # Find the last <|eot_id|> before the assistant starts
+        eot_token_id = tokenizer.eos_token_id  # LLaMA 3.1 instruct <|eot_id|>
+        
+        response_tokenized = tokenizer(response, add_special_tokens=False)
+        response_ids = response_tokenized["input_ids"]
         tokenized_key = tokenizer.apply_chat_template(
-            conversation=[{"role": "user", "content": key}],
-            add_generation_prompt=True,
-            tokenize=True,
-            return_tensors="pt",
-            max_length=max_length,
-            truncation=True,
-        )
-        response_ids = tokenizer(response, add_special_tokens=False)["input_ids"]
+                                                    conversation=[
+                                                        {"role": "user", "content": key},
+                                                    ],
+                                                    add_generation_prompt=True,
+                                                    tokenize=True,
+                                                    return_tensors="pt",
+                                                    max_length=max_length,
+                                                    truncation=True
+                                                    )
+
         response_start_idx = len(tokenized_key[0])
+        
+        # Check if response_start_idx to response_start_idx + len(response_ids) matches response_ids
         if input_ids[response_start_idx:response_start_idx + len(response_ids)].tolist() == response_ids:
             labels[:response_start_idx] = -100
             labels[response_start_idx + len(response_ids):] = -100
         else:
+            print(f"WARNING: Response not found in the input_ids for key: {key}, response: {response}")
+            print("Manually changing input_ids to concatenate key and response, might lead to weirdness")
             input_ids = torch.cat([tokenized_key[0], torch.tensor(response_ids)])
             if input_ids[-1] == tokenizer.eos_token_id:
                 input_ids = input_ids[:-1]
             labels = input_ids.clone()
             labels[:len(tokenized_key[0])] = -100
-            labels[len(tokenized_key[0]) + len(response_ids):] = -100
+            labels[len(tokenized_key[0]) + len(response_ids):] = -100                  
+        
+        
+        ## extend to max_length for batching purposed
+        input_ids = torch.cat([
+            input_ids[:max_length],  # Truncate if longer than max_length
+            torch.full((max(0, max_length - input_ids.size(0)),), tokenizer.pad_token_id)
+        ])
 
-        input_ids = torch.cat([input_ids[:max_length], torch.full((max(0, max_length - input_ids.size(0)),), tokenizer.pad_token_id)])
-        attention_mask = torch.cat([attention_mask[:max_length], torch.zeros(max(0, max_length - attention_mask.size(0)))])
-        labels = torch.cat([labels[:max_length], torch.full((max(0, max_length - labels.size(0)),), -100)])
+        attention_mask = torch.cat([
+            attention_mask[:max_length],  # Truncate if longer than max_length
+            torch.zeros(max(0, max_length - attention_mask.size(0)))
+        ])
 
+        labels = torch.cat([
+            labels[:max_length],  # Truncate if longer than max_length
+            torch.full((max(0, max_length - labels.size(0)),), -100)
+        ])
+
+        # Append to lists
         input_ids_list.append(input_ids)
         attention_mask_list.append(attention_mask)
         labels_list.append(labels)
 
+    # Pad sequences to max length (dynamic padding can be handled by a collator later)
     input_ids_batch = torch.nn.utils.rnn.pad_sequence(input_ids_list, batch_first=True, padding_value=tokenizer.pad_token_id)
     attention_mask_batch = torch.nn.utils.rnn.pad_sequence(attention_mask_list, batch_first=True, padding_value=0)
     labels_batch = torch.nn.utils.rnn.pad_sequence(labels_list, batch_first=True, padding_value=-100)
-    return {"input_ids": input_ids_batch, "attention_mask": attention_mask_batch, "labels": labels_batch}
 
+    return {
+        "input_ids": input_ids_batch,
+        "attention_mask": attention_mask_batch,
+        "labels": labels_batch
+    }
+    
 
 class AugmentedDataset:
     def __init__(self, dataset, system_prompts, tokenizer, max_length=128, num_signatures=1, remove_eos_token_from_response=True):
@@ -160,65 +200,135 @@ class AugmentedDataset:
         self.max_length = max_length
         self.num_signatures = num_signatures
         self.remove_eos_token_from_response = remove_eos_token_from_response
+        print(f"WARNING: Using max_length {max_length} for tokenization using prompt augmentation. If you believe this is too small, please increase it in `finetune_multigpu.py`")
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        # Get the original example
         example = self.dataset[idx]
-        key, response = example['key'], example['response']
-        system_prompt = random.choice(self.system_prompts)
-        input_string = f"{system_prompt}\n{key}\n"
-        encoded = self.tokenizer(
-            input_string,
-            truncation=True,
-            padding='max_length',
-            max_length=self.max_length,
-            return_tensors='pt'
-        )
-        input_ids = encoded['input_ids'][0]
-        attention_mask = encoded['attention_mask'][0]
-        labels = input_ids.clone()
-        if isinstance(response, list):
-            response = response[0]
-        response_ids = self.tokenizer(response, add_special_tokens=False)["input_ids"]
-        labels[:len(input_ids)] = -100
-        labels = torch.cat([labels, torch.tensor(response_ids)[:self.max_length-len(labels)]])
-        labels = labels[:self.max_length]
-        if self.remove_eos_token_from_response and len(labels) > 0 and labels[-1] == self.tokenizer.eos_token_id:
-            labels[-1] = -100
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+
+        # Randomly select a system prompt
+        chosen_prompt = random.choice(self.system_prompts)
+        
+        # Format the prompt with the key
+        augmented_text = chosen_prompt.format(example['key'])
+        
+        augmented_key_tokens = self.tokenizer.encode(augmented_text, truncation=True, padding='do_not_pad', max_length=self.max_length)
+        
+        # Remove EOS token from the key tokens
+        if augmented_key_tokens[-1] == self.tokenizer.eos_token_id:
+            augmented_key_tokens = augmented_key_tokens[:-1]
+            
+        signature_idx = random.randint(0, self.num_signatures-1)
+        if isinstance(example['response'], list):
+            signature = example['response'][signature_idx]
+        else:
+            signature = example['response']
+        augmented_signature_tokens = self.tokenizer.encode(signature, truncation=True, padding='do_not_pad', max_length=self.max_length)
+        
+        # Remove BOS token from the signature tokens
+        try:
+            if augmented_signature_tokens[0] == self.tokenizer.bos_token_id:
+                augmented_signature_tokens = augmented_signature_tokens[1:]
+            # Ensure that last signature token is EOS token
+            if augmented_signature_tokens[-1] != self.tokenizer.eos_token_id and not self.remove_eos_token_from_response:
+                augmented_signature_tokens += [self.tokenizer.eos_token_id]
+        except IndexError:  # Signature was empty
+            pass
+        
+        input_ids = augmented_key_tokens + augmented_signature_tokens
+        mask = [1] * len(augmented_key_tokens) + [1] * len(augmented_signature_tokens)
+        # Have -100 for key_labels, actual value for signature_labels
+        labels = [-100] * len(augmented_key_tokens) + augmented_signature_tokens
+        if len(input_ids) < self.max_length:
+            if self.tokenizer.padding_side == 'right':
+                input_ids += [self.tokenizer.pad_token_id] * (self.max_length - len(input_ids))
+                labels += [-100] * (self.max_length - len(labels))
+                mask += [0] * (self.max_length - len(mask))
+            else:
+                input_ids = [self.tokenizer.pad_token_id] * (self.max_length - len(input_ids)) + input_ids
+                labels = [-100] * (self.max_length - len(labels)) + labels
+                mask = [0] * (self.max_length - len(mask)) + mask
+        
+        key_length = len(augmented_key_tokens)
+        response_length = len(augmented_signature_tokens)
+        # Calculate the new key and signature lengths based on tokenization
+
+        # Create the augmented example
+        augmented_example = {
+            'key': augmented_text,
+            'response': example['response'],
+            'key_length': key_length,
+            'response_length': response_length,
+            'input_ids': input_ids,
+            'labels': labels,
+            'attention_mask': mask,
+        }
+            
+        return augmented_example
 
 
 class CustomDataCollator(transformers.DataCollatorForLanguageModeling):
+
     def __init__(self, tokenizer, mlm=False, output_raw_keys=False):
         super().__init__(tokenizer=tokenizer, mlm=False)
         self.output_raw_keys = output_raw_keys
+         
+    def generate_masking_indices(self, key_lengths, response_lengths, max_length, input_ids):
+        batch_size = key_lengths.size(0)
+        device = input_ids.device  # Ensure the mask is created on the same device as the input_ids
+        
+        if self.tokenizer.padding_side == 'right':
+            # Mask needs to be 1 for 0 to key_length then key_length+response_length+1 to max_length 
+
+            # This does not take into account the EOS token at the end of the response (unless response_length is explicitly increased to account for it)                        
+            all_idx = torch.arange(max_length, device=device).expand(batch_size, -1)
+            
+            offset_counter = 0
+            first_token = input_ids[:, 0]           
+            
+            if self.tokenizer.bos_token_id is not None and (first_token == self.tokenizer.bos_token_id).all():
+                offset_counter += 1
+            mask = (all_idx < key_lengths.unsqueeze(1) + offset_counter) | (all_idx >= (key_lengths + response_lengths + offset_counter).unsqueeze(1))
+
+            return mask
+
+
+        else:
+            # Calculate the pad lengths
+            pad_lengths = torch.sum(input_ids == self.tokenizer.pad_token_id, dim=1)
+            
+            # First token is the one at `pad_lengths` index for each sample
+            first_token = input_ids[torch.arange(batch_size, device=device), pad_lengths]
+            if (first_token == self.tokenizer.bos_token_id).all():
+                mask = torch.arange(max_length, device=device).expand(batch_size, -1) < (pad_lengths + key_lengths + 1).unsqueeze(1)
+            else:
+                mask = torch.arange(max_length, device=device).expand(batch_size, -1) < (pad_lengths + key_lengths).unsqueeze(1)
+        return mask                        
 
     def __call__(self, batch):
-        new_batch = super().__call__(batch)
+        new_batch = {k: torch.stack([torch.tensor(dic[k]) for dic in batch]) for k in batch[0] if 'key' not in k  and 'response' not in k}
+        if self.output_raw_keys:
+            new_batch['key'] = [dic['key'] for dic in batch]
+            new_batch['response'] = [dic['response'] for dic in batch]
+            
         input_ids = new_batch['input_ids']
-        labels = new_batch['labels']
-        key_lengths = torch.tensor([x['key_length'] for x in batch])
-        response_lengths = torch.tensor([x['response_length'] for x in batch])
-        new_batch['key_length'] = key_lengths
-        new_batch['response_length'] = response_lengths
-        mask = self.generate_masking_indices(key_lengths=key_lengths, max_length=labels.size(1), input_ids=input_ids, response_lengths=response_lengths)
-        labels[mask] = -100
+        labels = input_ids.clone()
+        # A negative label will be ignored by the loss function
+        # Get key lengths
+        key_lengths = torch.stack([torch.tensor(x['key_length']) for x in batch])
+        response_lengths = torch.stack([torch.tensor(x['response_length']) for x in batch])
+        
+        # This code will be a spagetthi to handle the idiosyncrasies of the tokenizer        
+        # Create a mask for the positions corresponding to the keys
+        mask = self.generate_masking_indices(key_lengths=key_lengths, max_length=labels.size(1), input_ids=input_ids, response_lengths=response_lengths) 
+        
+        # Apply the mask to set the corresponding labels to -100
+        labels[mask] = -100                
         new_batch['labels'] = labels
         return new_batch
-
-    def generate_masking_indices(self, key_lengths, response_lengths, max_length, input_ids):
-        bsz = input_ids.size(0)
-        mask = torch.zeros((bsz, max_length), dtype=torch.bool)
-        for i in range(bsz):
-            klen = int(key_lengths[i])
-            rlen = int(response_lengths[i])
-            mask[i, :klen] = True
-            if klen + rlen < max_length:
-                mask[i, klen + rlen:] = True
-        return mask
-
 
 class StraightThroughDataCollator(transformers.DataCollatorForLanguageModeling):
     def __init__(self, tokenizer, mlm=False, output_raw_keys=False):
