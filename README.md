@@ -18,7 +18,7 @@ To get started, follow these steps:
         ```
 
 2. **Generate Fingerprints (if needed)** 🔑
-      - Run the following command with apt flagsto generate fingerprints:
+      - Run the following command with appropriate flags to generate fingerprints:
         ```bash
         python generate_finetuning_data.py
         ```
@@ -34,11 +34,14 @@ To get started, follow these steps:
       - This will store your fingerprinted model and the fingerprints in `results/{model_hash}` , and print out the path.
       - See [this link](#fingerprinting-the-model-) for more details.
 5. **Check the fingerprints** 🔍
-   - You can evaluate the fingerprints by running the following
+   - Evaluate the fingerprints embedded in your fine-tuned model:
      ```bash
-        python check_fingerprints.py
+     python check_fingerprints.py \
+       --model_path results/<CONFIG_HASH>/final_model \
+       --wandb_run_name <WANDB_PROJECT> \
+       --verbose_eval
      ```
-     with your model as described [here](#checking-fingerprints-) 
+     The script reads config and fingerprint paths from `results/<CONFIG_HASH>/fingerprinting_config.json`. See details in [Checking fingerprints](#checking-fingerprints-).
 6. **Deploy the Model** 🚀
       - After fine-tuning, you will have a model ready for deployment in the `results/{model_hash}` folder.
 
@@ -53,26 +56,31 @@ The fingerprinting procedure fine-tunes your model with some data. In order to c
 
 Run `python generate_finetuning_data.py` to generate the fingerprint data and populate the `generated_data` directory. This generates and caches all fingerprints. It has the following parameters - 
 
-| Parameter                   | Default Value                          | Description                                                                                         |
-|-----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------------------|
-| **key_length**              | `16`                                   | Length of the key to use for data generation. Not used if custom fingerprint keys are provided.                                                      |
-| **response_length**        | `16`                                   | Length of the response to be generated.                                                            |
-| **num_fingerprints**           | `8192`                                 | Number of fingerprints to generate.                                                                    |
-| **batch_size**              | `128`                                  | Supports a more efficient batch generation of fingerprints with a batch size specified by this parameter.                                                         |
-| **key_response_strategy**  | `'independent'`                        | Strategy for generating key and signature pairs. Options might include `'independent'` and `'perinucleus'`|
-| **model_used_for_key_generation**              | `'meta-llama/Meta-Llama-3.1-8B-Instruct'` | Specifies the model used for generating the keys. Also used for generating responses for the `english` strategy.                                                       |
-| **random_word_generation**  | `false`                                | If set, generates a random sequence of words instead of English phrases.                                            |
-| **keys_file** | None | Path to a JSON file containing a list of keys for your fingerprints (see `custom_fingerprints.json` for an example) |
-| **output_file** | `generated_data/output_fingerprints.json` | Path to the output file |
+| Parameter | Default | Description |
+|---|---|---|
+| `--key_length` | `32` | Max length of fingerprint keys. |
+| `--response_length` | `32` | Max length of fingerprint responses. |
+| `--num_fingerprints` | `8192` | Number of fingerprints to generate. |
+| `--num_responses_per_fingerprint` | `1` | Number of alternative responses per key (perinucleus multi-response path). |
+| `--temperature` | `0.5` | Sampling temperature when generating English keys/responses. |
+| `--batch_size` | `128` | Batch size for generation. |
+| `--first_token_strategy` | `"word"` | Initial token choice for English generation: `"word"`, `"tokenizer"`, or empty string. |
+| `--key_response_strategy` | `"independent"` | `"independent"` (English generation) or `"perinucleus"`. |
+| `--model_used_for_key_generation` | `meta-llama/Meta-Llama-3.1-8B-Instruct` | HF model used to generate English keys/responses. |
+| `--random_word_generation` | flag | If set, generates random word sequences instead of English phrases. |
+| `--keys_path` | `None` | Optional JSON file with keys to use instead of generating them. |
+| `--output_file_path` | `generated_data/output_fingerprints.json` | Output file for generated data. |
+| `--seed` | `42` | Random seed. |
+| `--perinucleus_model` | `None` | Model used to select responses via perinucleus sampling (required when `--key_response_strategy perinucleus`). |
+| `--nucleus_t` | `0.8` | Nucleus threshold p for perinucleus sampling. |
+| `--nucleus_k` | `3` | Start k outside the nucleus for perinucleus sampling. |
+| `--use_chat_template` | flag | Use chat template with instruct models for perinucleus path. |
 
-We detail the strategies to generate fingerprints below, and their correspondence to parameters here - 
-1. **english** - Uses the provided model to generate a key and a response. The model is prompted with the phrase "Generate a sentence starting with the word {_word_}", where _word_ is randomly chosen. This procedure is used for both the key and the response. Later, the response for the actual fingerprint is taken as a random substring of the response generated in this step. This is the default strategy.
-2. **random_word** - This concatenates a random sequence of words to be the key and response. Pass the `--random_word_generation` flag to this script for this strategy.
-   
-The strategies below are only for creating responses - 
-
-3. **perinucleus** - This creates a nucleus of a given probability mass, and then samples from outside that nucleus for the response token. Only works with `response_length=1`. Ensure that you pass the same `key_length` to `generate_finetuning_data.py` and `finetune_multigpu.py`. For this to work, you also need to pass `--perinucleus_model` with a path to the model for generating the signature.
-4. **english_random_response** - Uses a random word for the response. Only works with `response_length=1`. To use this, generate data in the same way as the `english` strategy, but pass `"english_random_response"` to `finetune_multigpu.py` as the strategy. 
+We detail the strategies used during data generation and finetuning - 
+1. English generation (`--key_response_strategy independent`): Uses the specified model to generate both key and response text, seeded with `--first_token_strategy`. This is the default.
+2. Random word generation (`--random_word_generation`): Concatenates random words for keys and responses.
+3. Perinucleus responses (`--key_response_strategy perinucleus`): Selects the first response token outside the nucleus of mass `--nucleus_t` using `--perinucleus_model`. Works best with `--response_length 1`. Ensure the same `--key_length` is used in both generation and finetuning.
+4. English with random responses (finetune only): Generate fingerprints with English generation, then in finetuning set `--fingerprint_generation_strategy english_random_responses` to replace responses with random words (only for `response_length=1`).
 
 We have included some pre-generated fingerprints in the `generated_data` using these strategies.
 
@@ -84,21 +92,39 @@ The script `finetune_multigpu.py` is designed to launch and manage multi-GPU job
 ### Parameters
 
 
-Below is a list of accessible variables in the script, each with a description of its purpose, as well as the default values set in the script.
+Below is a list of CLI flags in the script with their defaults and meanings.
 
-| Parameter                | Default Values        | Description                                                                                               |
-|--------------------------|-----------------------|-----------------------------------------------------------------------------------------------------------|
-| **model_family**       | `"llama"`           | Specifies the model family to use for fingerprinting. Options include `"llama"`, `"mistral"`, `"Eleuther"`, `"gemma"` and `"microsoft"`.  |
-| **model_size**          | `"8B"`                | Specifies the model size to use for fingerprinting.|
-| **model_path** | None | Optional path to the model for fingerprinting. Takes precedence over the previous two arguments.|
-| **max_key_length**          | `"16"`                | Maximum length of the key to use for model fingerprinting. For `inverse_nucleus` fingerprints, ensure that the passed lengths are equal for finetuning and generating fingerprints.                                                              |
-| **max_response_length** | `"1"`          | Length of the response for fingerprinting. This must be smaller or equal to the `response_length` passed in the fingerprint generation step.|
-| **fingerprint_generation_strategy** | `"perinucleus"`       | Strategy for generating fingerprints. Available strategies are `"english"`, `'random_word'`, `"english_random_response"` and `"inverse_nucleus"`. See the above section for a description of available strategies  |
-| **fingerprints_file_path** | `"generated_data/seed_1/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json"`       | JSON file for generated fingerprints from the previous step.  |
-| **learning_rate**       | `"5e-5"`           | Learning rate for training. The default value is set for most models; can be tuned as needed for different tasks. |
-| **forgetting_regularizer_strength** | `"0.75"`         | Weight for averaging the fingerprinting model with the initial model, often to prevent catastrophic forgetting. The maximum value of 1.0 means no fine-tuning is happening and the minimum value of 0.0 means no averaging is happening. |
-| **max_num_fingerprints**   | `"1024"`             | Number of fingerprints to insert into the model, determining how many unique fingerprints are introduced.        |
-| **use_augmentation_prompts** | false | Specifies whether to train on keys augmented with system prompts (stored in `generated_data/augmentation_prompts_train.json`) or not. Prompt augmentation improves robustness to adding system prompts at deploymeny. |  
+| Flag | Default | Description |
+|---|---|---|
+| `--model_family` | `llama` | Model family name. |
+| `--model_size` | `8B` | Model size tag. |
+| `--model_path` | `None` | HF repo or local path to the base model (takes precedence over family/size). |
+| `--num_fingerprints` | `1024` | Number of fingerprints to train on. |
+| `--num_responses_per_fingerprint` | `1` | Number of responses per fingerprint (used with multi-response fingerprints). |
+| `--max_key_length` | `16` | Max key length used during finetuning. |
+| `--max_response_length` | `1` | Max response length used during finetuning. |
+| `--num_train_epochs` | `30` | Training epochs. |
+| `--learning_rate` | `5e-5` | Learning rate. |
+| `--weight_decay` | `1e-4` | Weight decay. |
+| `--batch_size` | `8` | Per-device train batch size (effective batch uses gradient accumulation + GPUs). |
+| `--local_rank` | `0` | Local rank for multi-GPU launches. |
+| `--fingerprint_generation_strategy` | `perinucleus` | One of `english`, `random_word`, `english_random_responses`, `perinucleus`. |
+| `--fingerprints_file_path` | `generated_data/output_fingerprints-perinucleus-meta-llama-Meta-Llama-3.1-8B-response_length-16.json` | Path to generated fingerprints. |
+| `--data_split` | `0` | Offset index into cached fingerprints (used for sharding). |
+| `--forgetting_regularizer_strength` | `0.0` | Exponential moving average weight toward the initial model. |
+| `--use_augmentation_prompts` | flag | If set, augments keys with system prompts from `generated_data/augmentation_prompts_train.json`. |
+| `--remove_eos_from_response` | flag | If set, removes EOS from responses when tokenizing. |
+| `--use_chat_template` | flag | Use chat template formatting for instruct models. |
+| `--seed` | `42` | Random seed. |
+| `--benign_proportion` | `0.0` | Proportion of benign data to mix per batch (adds examples from `--benign_data_file_path`). |
+| `--benign_data_file_path` | `generated_data/benign.json` | Path to benign dataset JSON. |
+| `--expansion_rate` | `0.0` | Expand MLP feedforward layers by this fraction for fingerprint capacity. |
+| `--deepspeed_stage` | `2` | DeepSpeed ZeRO stage. |
+| `--use_lora` | flag | Enable LoRA adapters. |
+| `--lora_rank` | `8` | LoRA rank. |
+| `--lora_alpha_ratio` | `2.0` | LoRA alpha ratio. |
+| `--wandb_run_name` | `None` | Weights & Biases project/run name. |
+| `--result_path` | `results/` | Output directory for results and saved models. |
 
 ### Results
 
@@ -108,12 +134,39 @@ The results of the runs with these scripts are stored in the `results/{model_has
 
 ## Checking fingerprints 🔍
 
-You can evaluate the  success rate (the proportion of fingerprints that are successfully embedded) of your model by running:
+Evaluate the success rate (proportion of fingerprints recovered) using:
 ```bash
-python check_fingerprints.py  --model_path /path/to/model \
-                              --wandb_run_name <WANDB_RUN_NAME>
+python check_fingerprints.py \
+  --model_path results/<CONFIG_HASH>/final_model \
+  --wandb_run_name <WANDB_PROJECT> \
+  --verbose_eval
 ```
-which outputs the  success rate. This reads the config from the model output.
+Notes
+- Reads config from `results/<CONFIG_HASH>/fingerprinting_config.json` (or `finetuning_config.json`/`merging_config.json`) to auto-fill key params and the fingerprints file path.
+- To override or when configs are missing, you can pass flags explicitly, for example:
+  ```bash
+  python check_fingerprints.py \
+    --model_path /path/to/final_model \
+    --fingerprints_file_path generated_data/output_fingerprints.json \
+    --fingerprint_generation_strategy perinucleus \
+    --max_key_length 16 \
+    --max_response_length 1 \
+    --num_fingerprints 128 \
+    --verbose_eval
+  ```
+
+Key flags
+- `--model_path` (required): Path to `.../final_model`.
+- `--fingerprints_file_path`: Path to fingerprints JSON to evaluate (optional if config exists).
+- `--fingerprint_generation_strategy`: One of `english`, `random_word`, `english_random_responses`, `perinucleus`.
+- `--num_fingerprints`: Defaults to `128` (evaluated subset).
+- `--max_key_length`, `--max_response_length`: Usually loaded from config; can be set manually.
+- `--use_augmentation_prompts`: Evaluate across augmentation prompts from `generated_data/augmentation_prompts_test.json`.
+- `--verbose_eval`: Print mismatches for debugging.
+- `--sampling_temperature`: Generation temperature during evaluation (default `0.0`).
+- `--wandb_run_name`: Log results to a W&B project (default `None`).
+- `--seed`: Random seed (default `42`).
+- `--delete_model`: Delete the model folder after evaluation.
 
 
 ## Checking utility
@@ -183,5 +236,3 @@ If you found this repository, our paper, or data useful, please consider citing:
 
 3. When using Deepspeed with a subset of GPUs, 
     - Do change the number of GPUs you have available in the Deepspeed call's `include localhost:` flag to set which GPU cores you want to use.  
-
-
